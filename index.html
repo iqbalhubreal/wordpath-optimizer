@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8fc">
+  <meta name="description" content="A focused workspace for optimizing crossword word lists into longer, letter-linked word chains. Work with batches, review unused words, and export reports locally.">
+  <meta property="og:title" content="WordPath Optimizer Studio">
+  <meta property="og:description" content="Turn a word list into organized, letter-linked chains. Fast, private, browser-based.">
+  <title>WordPath Optimizer Studio | Crossword Word Chains</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="WordPath Optimizer Studio home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" fill="none"><path d="M14.5 24.5 11.8 27.2a6.1 6.1 0 0 1-8.6-8.6l5.1-5.1a6.1 6.1 0 0 1 8.6 0"/><path d="m25.5 15.5 2.7-2.7a6.1 6.1 0 0 1 8.6 8.6l-5.1 5.1a6.1 6.1 0 0 1-8.6 0"/><path d="m13.5 26.5 13-13"/></svg>
+      </span>
+      <span class="brand-text"><strong>WordPath</strong><span>OPTIMIZER STUDIO</span></span>
+    </a>
+    <nav class="top-nav" aria-label="Main navigation">
+      <a href="#workspace">Workspace</a>
+      <a href="#how-it-works">How it works</a>
+    </nav>
+    <div class="topbar-actions">
+      <button class="button button-quiet button-compact" id="downloadReportBtn" type="button" hidden>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v9m0 0 3.4-3.4M10 11.5 6.6 8.1M3.5 13v3.5h13V13"/></svg>
+        Export .txt
+      </button>
+      <button class="button button-primary button-compact" id="copyAllBtn" type="button" hidden>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="1.5"/><path d="M12.5 6V3.5H4v10h3"/></svg>
+        Copy report
+      </button>
+    </div>
+  </header>
+
+  <main id="top" class="page-shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="eyebrow-dot"></span> CROSSWORD WORD-LIST WORKSPACE</p>
+        <h1 id="hero-title">Find the strongest <span>word paths.</span></h1>
+        <p class="hero-description">Organize a word list into longer, letter-linked chains. Review what fits, retry leftovers, and keep every batch tidy in one focused workspace.</p>
+        <div class="hero-points">
+          <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Runs in your browser</span>
+          <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Batch-friendly workflow</span>
+          <span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg> Copy or export results</span>
+        </div>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="visual-orbit orbit-one"></div><div class="visual-orbit orbit-two"></div>
+        <div class="visual-line line-one"></div><div class="visual-line line-two"></div>
+        <span class="visual-node node-one">CROSS</span><span class="visual-node node-two">WORD</span>
+        <span class="visual-node node-three">PATH</span><span class="visual-node node-four">LINK</span>
+        <span class="visual-center"><svg viewBox="0 0 32 32" fill="none"><path d="M12 20 9.7 22.3a4.8 4.8 0 0 1-6.8-6.8l4-4a4.8 4.8 0 0 1 6.8 0M20 12l2.3-2.3a4.8 4.8 0 0 1 6.8 6.8l-4 4a4.8 4.8 0 0 1-6.8 0M11 21l10-10"/></svg></span>
+      </div>
+    </section>
+
+    <section id="workspace" class="workspace" aria-label="Word path optimizer workspace">
+      <aside class="input-panel" aria-labelledby="input-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">STEP 01 <span>·</span> INPUT</p>
+            <h2 id="input-title">Your word list</h2>
+          </div>
+          <span class="panel-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5.5h14M5 10h14M5 14.5h8M5 19h6"/></svg></span>
+        </div>
+
+        <div class="batch-control">
+          <button class="icon-button" id="prevBatchBtn" type="button" aria-label="Previous batch" title="Previous batch" disabled><svg viewBox="0 0 20 20"><path d="m12.5 4.5-5.5 5.5 5.5 5.5"/></svg></button>
+          <div class="batch-indicator"><strong id="batchLabel">Batch 1</strong><span id="batchSubLabel">1 batch</span></div>
+          <button class="icon-button" id="nextBatchBtn" type="button" aria-label="Create or open next batch" title="Create or open next batch"><svg viewBox="0 0 20 20"><path d="m7.5 4.5 5.5 5.5-5.5 5.5"/></svg></button>
+        </div>
+
+        <div class="field-heading">
+          <label for="wordInput">Paste or type words</label>
+          <button class="text-button" id="loadSampleBtn" type="button">Load sample</button>
+        </div>
+        <textarea id="wordInput" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="inputHelp" placeholder="apple, pear, banana…"></textarea>
+        <p id="inputHelp" class="field-help">Separate words with commas, semicolons, or new lines. Repeated words are automatically skipped.</p>
+        <div class="input-metrics" aria-live="polite">
+          <span><strong id="wordCount">0</strong> entries</span>
+          <span><strong id="uniqueCount">0</strong> unique</span>
+        </div>
+
+        <div class="panel-divider"></div>
+        <div class="settings-heading"><div><p class="section-kicker">STEP 02 <span>·</span> SETTINGS</p><h3>Optimization effort</h3></div><span class="settings-pill">Optional</span></div>
+        <label class="select-wrap" for="effortSelect">
+          <select id="effortSelect" name="effort">
+            <option value="15">Quick · 15 passes</option>
+            <option value="50" selected>Balanced · 50 passes</option>
+            <option value="100">Deep · 100 passes</option>
+          </select>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg>
+        </label>
+        <p class="field-help settings-help">More passes can improve results, but take longer to run.</p>
+
+        <div class="primary-actions">
+          <button class="button button-primary optimize-button" id="optimizeBtn" type="button">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m11.1 2.5-7 8h5l-.3 7 7.1-9h-5.1l.3-6Z"/></svg>
+            <span>Optimize word paths</span>
+          </button>
+          <button class="button button-secondary" id="clearBtn" type="button">Clear batch</button>
+        </div>
+        <p class="privacy-note"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7"/></svg> Your word list stays in this browser tab.</p>
+      </aside>
+
+      <section class="results-panel" aria-labelledby="results-title">
+        <div class="results-heading">
+          <div>
+            <p class="section-kicker">STEP 03 <span>·</span> RESULTS</p>
+            <h2 id="results-title">Optimization report</h2>
+            <p class="results-subtitle" id="summaryLine">Add your words, then optimize to see the best chains.</p>
+          </div>
+          <span class="status-pill status-idle" id="statusBadge"><span></span> Ready</span>
+        </div>
+
+        <div class="stats-grid" aria-label="Current batch statistics">
+          <article class="stat-card stat-blue"><span class="stat-icon"><svg viewBox="0 0 20 20"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h6"/></svg></span><span class="stat-label">Unique words</span><strong id="statUnique">0</strong><span class="stat-foot">In this batch</span></article>
+          <article class="stat-card stat-green"><span class="stat-icon"><svg viewBox="0 0 20 20"><path d="m3 10 4.2 4.2L17 4.5"/></svg></span><span class="stat-label">Words placed</span><strong id="statUsed">0</strong><span class="stat-foot">In generated chains</span></article>
+          <article class="stat-card stat-purple"><span class="stat-icon"><svg viewBox="0 0 20 20"><path d="M6 5h8M6 10h8M6 15h8M3.5 5h.1M3.5 10h.1M3.5 15h.1"/></svg></span><span class="stat-label">Chains created</span><strong id="statChains">0</strong><span class="stat-foot">Ready to review</span></article>
+          <article class="stat-card stat-amber"><span class="stat-icon"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5v4l2.5 1.5"/></svg></span><span class="stat-label">Unused words</span><strong id="statLeftovers">0</strong><span class="stat-foot">May need a retry</span></article>
+        </div>
+
+        <div id="resultsNotice" class="notice" role="status" aria-live="polite" hidden></div>
+        <div id="resultsList" class="results-list">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-illustration" aria-hidden="true"><span class="empty-letter letter-a">A</span><span class="empty-letter letter-b">B</span><span class="empty-letter letter-c">C</span><svg viewBox="0 0 96 52"><path d="M13 27h25m20 0h25M38 27l8-8 12 8-12 8-8-8Z"/></svg></div>
+            <h3>Your next great chain starts here.</h3>
+            <p>Enter a word list and run the optimizer. Your chains and any unused words will appear here, ready to copy or export.</p>
+            <button class="button button-secondary" id="emptyLoadSampleBtn" type="button">Try the sample list</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="how-section" id="how-it-works" aria-labelledby="how-title">
+      <div class="how-heading"><div><p class="section-kicker">A SIMPLE WORKFLOW</p><h2 id="how-title">From word pile to clear paths.</h2></div><p>Designed for quick experiments and repeatable batches.</p></div>
+      <div class="steps-grid">
+        <article class="step-card"><span class="step-number">01</span><div class="step-icon"><svg viewBox="0 0 24 24"><path d="M5 5.5h14M5 10h14M5 14.5h9M5 19h6"/></svg></div><h3>Bring your words</h3><p>Paste a list using commas, semicolons, or line breaks. Duplicate entries are removed before processing.</p></article>
+        <article class="step-card"><span class="step-number">02</span><div class="step-icon"><svg viewBox="0 0 24 24"><path d="m13.5 2.5-8 10h6l-.5 9 8-11h-6l.5-8Z"/></svg></div><h3>Explore combinations</h3><p>The optimizer tests different arrangements and builds chains through compatible shared letters.</p></article>
+        <article class="step-card"><span class="step-number">03</span><div class="step-icon"><svg viewBox="0 0 24 24"><path d="M5 4.5h14v15H5zM8 8h8M8 12h8M8 16h5"/></svg></div><h3>Review and export</h3><p>Check your chains, retry a large leftover group, and copy the report or save it as a text file.</p></article>
+      </div>
+    </section>
+    <footer class="site-footer"><span>WordPath Optimizer Studio</span><span>Made for focused word-work.</span></footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript><div class="noscript-message">Please enable JavaScript to use WordPath Optimizer Studio.</div></noscript>
+</body>
+</html>
