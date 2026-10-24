@@ -35,7 +35,19 @@
     statUsed: $('#statUsed'),
     statChains: $('#statChains'),
     statLeftovers: $('#statLeftovers'),
+    geminiApiKey: $('#geminiApiKey'),
+    geminiModel: $('#geminiModel'),
+    testGeminiBtn: $('#testGeminiBtn'),
+    toggleApiKey: $('#toggleApiKey'),
+    geminiConnectionStatus: $('#geminiConnectionStatus'),
+    geminiStatusMessage: $('#geminiStatusMessage'),
     toast: $('#toast')
+  };
+
+  const GEMINI_MODEL_LABELS = {
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+    'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+    'gemini-3.8-flash': 'Gemini 3.8 Flash'
   };
 
   function parseWords(text) {
@@ -267,6 +279,50 @@
     return button;
   }
 
+  function formatCrosswordText(result) {
+    const title = String(result.title || 'Crossword Wordlist').trim();
+    const wordLine = `Source words: ${result.words.join(', ')}`;
+    const clueLines = result.words.map(word => {
+      const clue = result.clues[word.toLocaleLowerCase()] || 'A clue is not available for this word.';
+      return `${word}: ${clue}`;
+    });
+    return `${title}\n\n${wordLine}\n\n${clueLines.join('\n')}`;
+  }
+
+  function renderCrosswordOutput(chain) {
+    const result = chain.crossword && chain.crossword.result;
+    const wrap = createEl('div', 'crossword-output');
+    if (chain.crossword && chain.crossword.loading) {
+      wrap.classList.add('crossword-loading');
+      wrap.append(createEl('span', 'ai-loading-dot'), createEl('span', '', 'Gemini is writing your title and clues…'));
+      return wrap;
+    }
+    if (chain.crossword && chain.crossword.error) {
+      wrap.classList.add('crossword-error');
+      wrap.append(createEl('strong', '', 'Could not generate this wordlist'), createEl('p', '', chain.crossword.error));
+      return wrap;
+    }
+    if (!result) return null;
+
+    const header = createEl('div', 'crossword-output-head');
+    const heading = createEl('h4', '', result.title || 'Crossword Wordlist');
+    const copy = createEl('button', 'button button-copy-content', 'Copy full content');
+    copy.type = 'button';
+    copy.addEventListener('click', () => copyText(formatCrosswordText(result), 'Crossword title and clues copied.'));
+    header.append(heading, copy);
+
+    const fromLine = createEl('div', 'crossword-from-line', `From: ${result.words.join(', ')} To`);
+    const clueList = createEl('dl', 'crossword-clue-list');
+    result.words.forEach(word => {
+      const term = createEl('dt', '', word);
+      const definition = createEl('dd', '', result.clues[word.toLocaleLowerCase()] || 'A clue is not available for this word.');
+      clueList.append(term, definition);
+    });
+    const generatedBy = createEl('p', 'crossword-generated-by', `Generated with ${result.modelLabel}`);
+    wrap.append(header, fromLine, clueList, generatedBy);
+    return wrap;
+  }
+
   function renderChainCard(chain, number, batchIndex) {
     const words = chain.map(item => item.obj.original);
     const plainText = words.join(', ');
@@ -287,10 +343,20 @@
       if (index < words.length - 1) flow.appendChild(createEl('span', 'chain-arrow', '→'));
     });
     const preview = createEl('div', 'plain-preview', plainText);
-    card.append(head, flow, preview);
+
+    const aiButton = createEl('button', 'button button-ai-generate', chain.crossword && chain.crossword.result ? 'Regenerate crossword wordlist' : 'Generate wordlist (for crossword)');
+    aiButton.type = 'button';
+    aiButton.disabled = Boolean(chain.crossword && chain.crossword.loading);
+    if (aiButton.disabled) aiButton.textContent = 'Generating wordlist…';
+    aiButton.addEventListener('click', () => generateCrosswordWordlist(chain, batchIndex));
+    const aiActions = createEl('div', 'crossword-card-actions');
+    aiActions.append(aiButton);
+
+    card.append(head, flow, preview, aiActions);
+    const aiOutput = renderCrosswordOutput(chain);
+    if (aiOutput) card.appendChild(aiOutput);
     return card;
   }
-
   function renderLeftoverCard(words, batchIndex) {
     const card = createEl('article', 'chain-card leftover-card');
     const head = createEl('div', 'chain-card-head');
@@ -370,6 +436,195 @@
       el.resultsList.appendChild(empty);
     } else {
       completed.forEach(({ batch, index }) => el.resultsList.appendChild(renderBatchResults(batch, index)));
+    }
+  }
+
+  function selectedGeminiModel() {
+    return el.geminiModel.value;
+  }
+
+  function setGeminiStatus(label, kind, message) {
+    el.geminiConnectionStatus.className = `ai-status ai-status-${kind}`;
+    el.geminiConnectionStatus.textContent = label;
+    if (message) el.geminiStatusMessage.textContent = message;
+  }
+
+  function friendlyGeminiError(message, status) {
+    const raw = String(message || 'The request failed.').replace(/https?:\/\/[^\s]+/gi, '').trim();
+    const lower = raw.toLocaleLowerCase();
+    if (status === 400 && (lower.includes('api key') || lower.includes('key') || lower.includes('api_key_invalid'))) return 'Google rejected this API key. Create a current key in Google AI Studio, or make sure your standard key is restricted to the Gemini API. Check the key and try again.';
+    if (status === 401 || status === 403 || lower.includes('permission')) return 'Access was denied. Check the key, project permissions, and Gemini API access. A current authorization key or a Gemini-API-restricted standard key may be required.';
+    if (status === 404 || lower.includes('not found')) return 'This model endpoint was not found or is unavailable to this API key. Try another model from the menu.';
+    if (status === 429 || lower.includes('quota') || lower.includes('rate')) return 'The model quota or rate limit was reached. Check your Google AI Studio quota and try again later.';
+    if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) return 'The browser could not reach Google. Check your internet connection and retry. If the file was opened directly, try running it from localhost or a static web host.';
+    return raw.length > 240 ? `${raw.slice(0, 237)}…` : raw;
+  }
+
+  async function requestGemini(prompt, options = {}) {
+    const apiKey = el.geminiApiKey.value.trim();
+    if (!apiKey) throw new Error('Paste a Gemini API key first.');
+    const model = options.model || selectedGeminiModel();
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const generationConfig = { maxOutputTokens: options.maxOutputTokens || 1800 };
+    if (model !== 'gemini-3.8-flash') generationConfig.temperature = 0.35;
+    if (options.jsonSchema) {
+      generationConfig.responseFormat = {
+        text: { mimeType: 'APPLICATION_JSON', schema: options.jsonSchema }
+      };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs || 60000);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig
+        }),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new Error('The request timed out. Check your connection, then retry or choose a faster model.');
+      }
+      throw new Error(friendlyGeminiError(error && error.message ? error.message : 'NetworkError'));
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    let payload;
+    try { payload = await response.json(); }
+    catch (_) { payload = {}; }
+    if (!response.ok) {
+      const apiMessage = payload && payload.error && payload.error.message ? payload.error.message : `Gemini request failed (${response.status}).`;
+      throw new Error(friendlyGeminiError(apiMessage, response.status));
+    }
+    const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+    const answer = candidates
+      .flatMap(candidate => candidate && candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [])
+      .map(part => part && typeof part.text === 'string' ? part.text : '')
+      .join('\n')
+      .trim();
+    if (!answer) {
+      const blockReason = payload.promptFeedback && payload.promptFeedback.blockReason;
+      const reason = candidates[0] && candidates[0].finishReason;
+      if (blockReason) throw new Error(`Google blocked this request (${blockReason}). Try a different prompt or model.`);
+      throw new Error(reason ? `Gemini returned no text (${reason}). Try another model or a shorter input.` : 'Gemini returned an empty response. Please retry.');
+    }
+    return answer;
+  }
+
+  async function testGeminiConnection() {
+    const apiKey = el.geminiApiKey.value.trim();
+    if (!apiKey) {
+      setGeminiStatus('API key needed', 'error', 'Paste your Gemini API key to test this model.');
+      el.geminiApiKey.focus();
+      return;
+    }
+    const model = selectedGeminiModel();
+    el.testGeminiBtn.disabled = true;
+    el.testGeminiBtn.classList.add('is-loading');
+    el.testGeminiBtn.querySelector('span')?.remove();
+    el.testGeminiBtn.setAttribute('aria-busy', 'true');
+    const originalLabel = 'Test connection';
+    el.testGeminiBtn.dataset.originalLabel = originalLabel;
+    el.testGeminiBtn.lastChild.textContent = 'Testing…';
+    setGeminiStatus('Connecting…', 'working', `Checking access to ${GEMINI_MODEL_LABELS[model] || model}…`);
+    try {
+      const answer = await requestGemini('Reply with exactly this text and nothing else: WORDPATH_OK', { model, maxOutputTokens: 40 });
+      if (!answer.toLocaleUpperCase().includes('WORDPATH_OK')) {
+        throw new Error('The model responded, but the quick check was unexpected. You can still try generating a wordlist.');
+      }
+      setGeminiStatus('Connected', 'success', `Connection successful. ${GEMINI_MODEL_LABELS[model]} is responding and ready for crossword wordlists.`);
+      showToast('Gemini connection test passed.');
+    } catch (error) {
+      const message = friendlyGeminiError(error && error.message ? error.message : 'Connection failed');
+      setGeminiStatus('Connection failed', 'error', message);
+    } finally {
+      el.testGeminiBtn.disabled = false;
+      el.testGeminiBtn.classList.remove('is-loading');
+      el.testGeminiBtn.removeAttribute('aria-busy');
+      el.testGeminiBtn.replaceChildren();
+      const iconHolder = document.createElement('span');
+      iconHolder.className = 'button-ai-test-icon';
+      iconHolder.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 12 7.8l5.5 2.2-5.5 2.2L10 17.5l-2-5.3L2.5 10 8 7.8 10 2.5Z"/><path d="m16.2 2 .6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4Z"/></svg>';
+      el.testGeminiBtn.append(iconHolder, document.createTextNode('Test connection'));
+    }
+  }
+
+  async function generateCrosswordWordlist(chain, batchIndex) {
+    if (chain.crossword && chain.crossword.loading) return;
+    const words = chain.map(item => item.obj.original);
+    if (!words.length) return;
+    if (!el.geminiApiKey.value.trim()) {
+      setGeminiStatus('API key needed', 'error', 'Paste a Gemini API key and test the connection before generating a wordlist.');
+      el.geminiApiKey.focus();
+      showToast('Add your Gemini API key first.');
+      return;
+    }
+
+    const model = selectedGeminiModel();
+    chain.crossword = { loading: true, error: null, result: null };
+    renderResults();
+    setGeminiStatus('Generating…', 'working', `Gemini is creating a title and ${words.length} clues using ${GEMINI_MODEL_LABELS[model] || model}.`);
+    const schema = {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        entries: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { word: { type: 'string' }, clue: { type: 'string' } },
+            required: ['word', 'clue'],
+            additionalProperties: false
+          }
+        }
+      },
+      required: ['title', 'entries'],
+      additionalProperties: false
+    };
+    const prompt = `Create a polished, ready-to-use crossword wordlist from the exact words below.\n\nRequirements:\n1. Write one short, appealing title that fits this word set.\n2. Write one accurate, clear crossword-style clue for every word. Aim for a concise phrase or one short sentence, usually 6–18 words.\n3. Keep all input words exactly as supplied, with their spelling and spacing unchanged. Include each input word exactly once and preserve the original order. Do not add any words.\n4. Clues should identify the meaning naturally without simply repeating the answer. Use common, age-appropriate language. Avoid inventing details when a word is ambiguous.\n5. Return only the requested JSON structure, with title and entries (each entry has word and clue).\n\nWords:\n${JSON.stringify(words)}`;
+    try {
+      const raw = await requestGemini(prompt, { model, maxOutputTokens: Math.min(6000, 900 + words.length * 110), jsonSchema: schema });
+      let parsed;
+      try {
+        const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        parsed = JSON.parse(clean);
+      } catch (_) {
+        throw new Error('Gemini responded, but the clue list was not in the expected format. Please try generating it again.');
+      }
+      if (!parsed || !Array.isArray(parsed.entries)) throw new Error('Gemini returned an incomplete wordlist. Please try again.');
+      const clues = {};
+      const responseEntries = new Map();
+      parsed.entries.forEach(entry => {
+        if (entry && typeof entry.word === 'string' && typeof entry.clue === 'string') {
+          responseEntries.set(entry.word.trim().toLocaleLowerCase(), entry.clue.trim());
+        }
+      });
+      const missing = words.filter(word => {
+        const clue = responseEntries.get(word.toLocaleLowerCase());
+        return !clue || !clue.trim();
+      });
+      if (missing.length) throw new Error(`Gemini missed a usable clue for ${missing.length} word${missing.length === 1 ? '' : 's'}. Generate again for a complete list.`);
+      words.forEach(word => { clues[word.toLocaleLowerCase()] = responseEntries.get(word.toLocaleLowerCase()).trim(); });
+      const safeTitle = String(parsed.title || 'Crossword Wordlist').trim().slice(0, 140) || 'Crossword Wordlist';
+      chain.crossword = {
+        loading: false,
+        error: null,
+        result: { title: safeTitle, words, clues, model, modelLabel: GEMINI_MODEL_LABELS[model] || model, timestamp: new Date() }
+      };
+      setGeminiStatus('Connected', 'success', `Wordlist generated successfully with ${GEMINI_MODEL_LABELS[model] || model}. Your generated content is ready to copy.`);
+      renderResults();
+      showToast('Crossword wordlist generated.');
+    } catch (error) {
+      const message = friendlyGeminiError(error && error.message ? error.message : 'Generation failed');
+      chain.crossword = { loading: false, error: message, result: null };
+      setGeminiStatus('Generation failed', 'error', message);
+      renderResults();
     }
   }
 
@@ -467,7 +722,13 @@
       lines.push(`Chains created: ${batch.results.chains.length}`);
       lines.push('');
       const chains = [...batch.results.chains].sort((a, b) => b.length - a.length);
-      chains.forEach((chain, index) => lines.push(`Chain ${index + 1} (${chain.length} words): ${chain.map(item => item.obj.original).join(' → ')}`));
+      chains.forEach((chain, index) => {
+        lines.push(`Chain ${index + 1} (${chain.length} words): ${chain.map(item => item.obj.original).join(' → ')}`);
+        if (chain.crossword && chain.crossword.result) {
+          lines.push('');
+          lines.push(formatCrosswordText(chain.crossword.result));
+        }
+      });
       if (batch.results.leftovers.length) lines.push(`Unused words: ${batch.results.leftovers.join(', ')}`);
       else lines.push('Unused words: None');
       if (batch.results.stale) lines.push('NOTE: This report reflects the last run before the input was edited.');
@@ -538,6 +799,20 @@
   el.emptyLoadSampleBtn.addEventListener('click', loadSample);
   el.copyAllBtn.addEventListener('click', copyAllResults);
   el.downloadReportBtn.addEventListener('click', downloadReport);
+  el.testGeminiBtn.addEventListener('click', testGeminiConnection);
+  el.toggleApiKey.addEventListener('click', () => {
+    const reveal = el.geminiApiKey.type === 'password';
+    el.geminiApiKey.type = reveal ? 'text' : 'password';
+    el.toggleApiKey.textContent = reveal ? 'Hide' : 'Show';
+    el.toggleApiKey.setAttribute('aria-label', reveal ? 'Hide API key' : 'Show API key');
+    el.toggleApiKey.setAttribute('aria-pressed', String(reveal));
+  });
+  el.geminiApiKey.addEventListener('input', () => {
+    setGeminiStatus('Not tested', 'neutral', el.geminiApiKey.value.trim() ? 'API key changed. Test the connection to verify access.' : 'Enter a current Gemini API key, then test the selected model before generating.');
+  });
+  el.geminiModel.addEventListener('change', () => {
+    setGeminiStatus('Not tested', 'neutral', `Selected ${GEMINI_MODEL_LABELS[selectedGeminiModel()] || selectedGeminiModel()}. Test the connection to verify availability.`);
+  });
 
   renderInputView();
 })();
