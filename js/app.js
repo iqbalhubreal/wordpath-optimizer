@@ -45,9 +45,11 @@
   };
 
   const GEMINI_MODEL_LABELS = {
+    'gemini-3.7-flash': 'Gemini 3.7 Flash',
+    'gemini-3.5-flash': 'Gemini 3.5 Flash',
+    'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
     'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
-    'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
-    'gemini-3.8-flash': 'Gemini 3.8 Flash'
+    'gemini-3-flash-preview': 'Gemini 3 Flash Preview'
   };
 
   function parseWords(text) {
@@ -466,7 +468,7 @@
     const model = options.model || selectedGeminiModel();
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     const generationConfig = { maxOutputTokens: options.maxOutputTokens || 1800 };
-    if (model !== 'gemini-3.8-flash') generationConfig.temperature = 0.35;
+    generationConfig.temperature = 0.35;
     if (options.jsonSchema) {
       generationConfig.responseFormat = {
         text: { mimeType: 'APPLICATION_JSON', schema: options.jsonSchema }
